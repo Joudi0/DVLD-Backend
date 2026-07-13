@@ -8,6 +8,11 @@ using Scalar.AspNetCore;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
+// 1. قراءة المفتاح السري بأمان من البيئة مع وجود خط دفاع احتياطي
+string secretKey = builder.Configuration["JwtSettings:SecretKey"]
+                   ?? Environment.GetEnvironmentVariable("JwtSettings__SecretKey")
+                   ?? "Fallback_Temporary_Key_Only_For_Local_Development_To_Prevent_Crashes!";
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -19,7 +24,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
             ValidAudience = builder.Configuration["JwtSettings:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JwtSettings:SecretKey"]!))
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey))
         };
     });
 
@@ -27,7 +32,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddRateLimiter((Microsoft.AspNetCore.RateLimiting.RateLimiterOptions options) =>
 {
     options.RejectionStatusCode = Microsoft.AspNetCore.Http.StatusCodes.Status429TooManyRequests;
-    
+
     // Handle rejected requests globally and return a clean JSON message
     options.OnRejected = async (Microsoft.AspNetCore.RateLimiting.OnRejectedContext context, System.Threading.CancellationToken token) =>
     {
@@ -65,7 +70,6 @@ builder.Services.AddRateLimiter((Microsoft.AspNetCore.RateLimiting.RateLimiterOp
 });
 
 builder.Services.AddEndpointsApiExplorer();
-
 // For .NET 10 OpenAPI native support
 builder.Services.AddOpenApi();
 
@@ -78,16 +82,17 @@ builder.Services.AddAuthorization(options =>
 
 System.Collections.Generic.IEnumerable<System.Type> handlerTypes = typeof(Program).Assembly.GetTypes()
     .Where((System.Type t) => typeof(IAuthorizationHandler).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract);
+
 foreach (System.Type handler in handlerTypes)
 {
     builder.Services.AddSingleton(typeof(IAuthorizationHandler), handler);
 }
 
-builder.Services.AddControllers(); 
-
+builder.Services.AddControllers();
 builder.Services.AddScoped<WebAPI.Services.clsTokenService>(); // to make the tokens in login works
 
 WebApplication app = builder.Build();
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
@@ -96,7 +101,8 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseAuthentication();
-app.UseRateLimiter(); 
+app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
+
 app.Run();
