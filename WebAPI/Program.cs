@@ -120,5 +120,7 @@ app.MapScalarApiReference();
 app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization();
+app.UseStaticFiles();
 app.MapControllers();
+app.MapGet("/", () => "DVLD WebAPI is running successfully on MonsterASP!");
 app.Run();
