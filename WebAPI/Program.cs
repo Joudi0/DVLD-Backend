@@ -8,11 +8,17 @@ using Scalar.AspNetCore;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-// 1. قراءة المفتاح السري بأمان من البيئة مع وجود خط دفاع احتياطي
-string secretKey = builder.Configuration["JwtSettings:SecretKey"]
-                   ?? Environment.GetEnvironmentVariable("JwtSettings__SecretKey")
-                   ?? "Fallback_Temporary_Key_Only_For_Local_Development_To_Prevent_Crashes!";
+string secretKey = builder.Configuration["JwtSettings:SecretKey"];
 
+if (string.IsNullOrWhiteSpace(secretKey))
+{
+    secretKey = Environment.GetEnvironmentVariable("JwtSettings__SecretKey");
+}
+
+if (string.IsNullOrWhiteSpace(secretKey))
+{
+    secretKey = "Fallback_Temporary_Key_Only_For_Local_Development_To_Prevent_Crashes!";
+}
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -92,13 +98,8 @@ builder.Services.AddControllers();
 builder.Services.AddScoped<WebAPI.Services.clsTokenService>(); // to make the tokens in login works
 
 WebApplication app = builder.Build();
-
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-    app.MapScalarApiReference(); // New API Reference for .NET 10
-}
-
+app.MapOpenApi();
+app.MapScalarApiReference(); // New API Reference for .NET 10
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseRateLimiter();
