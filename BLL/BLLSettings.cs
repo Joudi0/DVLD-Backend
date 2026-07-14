@@ -8,7 +8,7 @@ namespace BLL
     {
         public static void Initialize(string connStr)
         {
-            DAL.clsDataSettings.connectionString = connStr;
+            DAL.DataSettings.connectionString = connStr;
         }
     }
 }

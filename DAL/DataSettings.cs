@@ -1,6 +1,6 @@
 namespace DAL
 {
-    public static class clsDataSettings
+    public static class DataSettings
     {
         public static string connectionString;
     }
