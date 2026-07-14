@@ -1,24 +1,27 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
-using System.Text;
-using System.Linq;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
-
+using System.Linq;
+using System.Text;
+using BLL;
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-string secretKey = builder.Configuration["JwtSettings:SecretKey"];
+string connStr = builder.Configuration.GetConnectionString("DefaultConnection")!;
+BLLSettings.Initialize(connStr);
 
+
+string secretKey = builder.Configuration["JwtSettings:SecretKey"];
 if (string.IsNullOrWhiteSpace(secretKey))
 {
     secretKey = Environment.GetEnvironmentVariable("JwtSettings__SecretKey");
 }
-
 if (string.IsNullOrWhiteSpace(secretKey))
 {
     secretKey = "Fallback_Temporary_Key_Only_For_Local_Development_To_Prevent_Crashes!";
 }
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -39,7 +42,6 @@ builder.Services.AddRateLimiter((Microsoft.AspNetCore.RateLimiting.RateLimiterOp
 {
     options.RejectionStatusCode = Microsoft.AspNetCore.Http.StatusCodes.Status429TooManyRequests;
 
-    // Handle rejected requests globally and return a clean JSON message
     options.OnRejected = async (Microsoft.AspNetCore.RateLimiting.OnRejectedContext context, System.Threading.CancellationToken token) =>
     {
         context.HttpContext.Response.ContentType = "application/json";
@@ -47,7 +49,7 @@ builder.Services.AddRateLimiter((Microsoft.AspNetCore.RateLimiting.RateLimiterOp
         await context.HttpContext.Response.WriteAsync(errorMessage, System.Text.Encoding.UTF8, token);
     };
 
-    // 1. Strict Policy for Authentication endpoints (5 requests per minute)
+    // 1. Strict Policy
     options.AddFixedWindowLimiter(Shared.clsProjectPolicies.AuthPolicy, (System.Threading.RateLimiting.FixedWindowRateLimiterOptions fixedOptions) =>
     {
         fixedOptions.PermitLimit = 5;
@@ -56,7 +58,7 @@ builder.Services.AddRateLimiter((Microsoft.AspNetCore.RateLimiting.RateLimiterOp
         fixedOptions.QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst;
     });
 
-    // 2. Medium Policy for Write operations like Add, Update, Delete (30 requests per minute)
+    // 2. Medium Policy
     options.AddFixedWindowLimiter(Shared.clsProjectPolicies.WritePolicy, (System.Threading.RateLimiting.FixedWindowRateLimiterOptions fixedOptions) =>
     {
         fixedOptions.PermitLimit = 30;
@@ -65,7 +67,7 @@ builder.Services.AddRateLimiter((Microsoft.AspNetCore.RateLimiting.RateLimiterOp
         fixedOptions.QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst;
     });
 
-    // 3. Loose Policy for Read operations like Get, Paging, GetAll (100 requests per minute)
+    // 3. Loose Policy
     options.AddFixedWindowLimiter(Shared.clsProjectPolicies.ReadPolicy, (System.Threading.RateLimiting.FixedWindowRateLimiterOptions fixedOptions) =>
     {
         fixedOptions.PermitLimit = 100;
@@ -76,7 +78,6 @@ builder.Services.AddRateLimiter((Microsoft.AspNetCore.RateLimiting.RateLimiterOp
 });
 
 builder.Services.AddEndpointsApiExplorer();
-// For .NET 10 OpenAPI native support
 builder.Services.AddOpenApi();
 
 // Add authorization services
@@ -88,22 +89,36 @@ builder.Services.AddAuthorization(options =>
 
 System.Collections.Generic.IEnumerable<System.Type> handlerTypes = typeof(Program).Assembly.GetTypes()
     .Where((System.Type t) => typeof(IAuthorizationHandler).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract);
-
 foreach (System.Type handler in handlerTypes)
 {
     builder.Services.AddSingleton(typeof(IAuthorizationHandler), handler);
 }
 
 builder.Services.AddControllers();
-builder.Services.AddScoped<WebAPI.Services.clsTokenService>(); // to make the tokens in login works
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAllOrigins", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
+
+builder.Services.AddScoped<WebAPI.Services.clsTokenService>();
 
 WebApplication app = builder.Build();
+
+app.UseCors("AllowAllOrigins");
+
 app.MapOpenApi();
-app.MapScalarApiReference(); // New API Reference for .NET 10
-app.UseHttpsRedirection();
+app.MapScalarApiReference();
+
+// app.UseHttpsRedirection();
+
 app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
-
 app.Run();
